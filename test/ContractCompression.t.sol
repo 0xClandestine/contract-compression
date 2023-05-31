@@ -30,9 +30,7 @@ contract ContractCompressionTest is Test {
 
         assertEq(decompressed, type(Foo).creationCode);
 
-        // reverts with "StateChangeDuringStaticCall" when using StaticFastLZ interface with added view keyword
-        bytes memory returnData =
-            flz.decompressAndCall(compressed, abi.encodeCall(Foo.bar, ()));
+        bytes memory returnData = flz.decompressAndCall(compressed, abi.encodeCall(Foo.bar, ()));
 
         assertEq(abi.decode(returnData, (string)), "bar");
     }

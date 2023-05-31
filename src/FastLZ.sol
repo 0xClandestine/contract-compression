@@ -14,36 +14,36 @@ contract FastLZ {
         return LibZip.flzDecompress(data);
     }
 
-    function __decompressAndCall(bytes memory compressedCreationCode, bytes memory data)
-        external
-        virtual
-    {
+    function __decompressAndCall(bytes memory compressedCreationCode, bytes memory data) external {
         bytes memory decompressedCreationCode = LibZip.flzDecompress(compressedCreationCode);
 
         address temporaryAddr;
 
         assembly {
-            temporaryAddr := create(0, add(decompressedCreationCode, 0x20), mload(decompressedCreationCode))
+            temporaryAddr :=
+                create(0, add(decompressedCreationCode, 0x20), mload(decompressedCreationCode))
         }
 
-        (bool success, bytes memory returnData) = temporaryAddr.delegatecall(data);
+        (bool success, bytes memory returnData) = temporaryAddr.call(data);
 
+        // Ensure any modifications are reverted
         assembly {
-            // If not successful call, return `returnData` using revert statement.
-            if iszero(success) { revert(add(returnData, 0x20), mload(returnData)) }
+            if success { revert(add(returnData, 0x20), mload(returnData)) }
 
-            // Otherwise, return `returnData` using return statement.
             return(add(returnData, 0x20), mload(returnData))
         }
     }
 
     function decompressAndCall(bytes memory compressedCreationCode, bytes memory data)
         external
-        virtual
-        returns (bytes memory returnData)
+        returns (bytes memory)
     {
-        (, returnData) = address(this).delegatecall(
+        (bool success, bytes memory returnData) = address(this).call(
             abi.encodeCall(this.__decompressAndCall, (compressedCreationCode, data))
         );
+
+        if (success) revert();
+
+        return returnData;
     }
 }
