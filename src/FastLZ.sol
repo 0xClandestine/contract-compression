@@ -5,25 +5,25 @@ import "solady/utils/LibZip.sol";
 
 contract FastLZ {
     /// @dev Returns the compressed `data`.
-    function compress(bytes memory data) external pure virtual returns (bytes memory) {
+    function compress(bytes memory data) external pure returns (bytes memory) {
         return LibZip.flzCompress(data);
     }
 
     /// @dev Returns the decompressed `data`.
-    function decompress(bytes memory data) external pure virtual returns (bytes memory) {
+    function decompress(bytes memory data) external pure returns (bytes memory) {
         return LibZip.flzDecompress(data);
     }
 
-    function __decompressAndCall(bytes memory compressedInitcode, bytes memory data)
+    function __decompressAndCall(bytes memory compressedCreationCode, bytes memory data)
         external
         virtual
     {
-        bytes memory decompressedInitcode = LibZip.flzDecompress(compressedInitcode);
+        bytes memory decompressedCreationCode = LibZip.flzDecompress(compressedCreationCode);
 
         address temporaryAddr;
 
         assembly {
-            temporaryAddr := create(0, add(decompressedInitcode, 0x20), mload(decompressedInitcode))
+            temporaryAddr := create(0, add(decompressedCreationCode, 0x20), mload(decompressedCreationCode))
         }
 
         (bool success, bytes memory returnData) = temporaryAddr.delegatecall(data);
@@ -37,13 +37,13 @@ contract FastLZ {
         }
     }
 
-    function decompressAndCall(bytes memory compressedInitcode, bytes memory data)
+    function decompressAndCall(bytes memory compressedCreationCode, bytes memory data)
         external
         virtual
         returns (bytes memory returnData)
     {
         (, returnData) = address(this).delegatecall(
-            abi.encodeCall(this.__decompressAndCall, (compressedInitcode, data))
+            abi.encodeCall(this.__decompressAndCall, (compressedCreationCode, data))
         );
     }
 }
