@@ -27,16 +27,11 @@ contract Foo {
         }
     }
 
-    function a() internal pure returns (uint256) {
-        return _getArgUint256(0);
-    }
-
-    function b() internal pure returns (uint256) {
-        return _getArgUint256(32);
-    }
-
     fallback(bytes calldata) external returns (bytes memory) {
-        return abi.encode(a() + b());
+        uint256 a = _getArgUint256(0);
+        uint256 b = _getArgUint256(32);
+
+        return abi.encode(a + b);
     }
 }
 
@@ -60,6 +55,8 @@ contract ContractCompressionTest is Test {
         );
 
         (, bytes memory returnData) = hyvm.delegatecall(runtimeCode);
+
+        console.log(runtimeCode.length);
 
         assertEq(abi.decode(returnData, (uint256)), 420 + 69);
     }
