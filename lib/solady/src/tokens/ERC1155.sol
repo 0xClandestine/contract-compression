@@ -5,6 +5,10 @@ pragma solidity ^0.8.4;
 /// @author Solady (https://github.com/vectorized/solady/blob/main/src/tokens/ERC1155.sol)
 /// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC1155.sol)
 /// @author Modified from OpenZeppelin (https://github.com/OpenZeppelin/openzeppelin-contracts/tree/master/contracts/token/ERC1155/ERC1155.sol)
+/// Note:
+/// The ERC1155 standard allows for self-approvals.
+/// For performance, this implementation WILL NOT revert for such actions.
+/// Please add any checks with overrides if desired.
 abstract contract ERC1155 {
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                       CUSTOM ERRORS                        */
@@ -192,6 +196,11 @@ abstract contract ERC1155 {
             // Clear the upper 96 bits.
             from := shr(96, fromSlotSeed)
             to := shr(96, toSlotSeed)
+            // Revert if `to` is the zero address.
+            if iszero(to) {
+                mstore(0x00, 0xea553b34) // `TransferToZeroAddress()`.
+                revert(0x1c, 0x04)
+            }
             // If the caller is not `from`, do the authorization check.
             if iszero(eq(caller(), from)) {
                 mstore(0x00, caller())
@@ -199,11 +208,6 @@ abstract contract ERC1155 {
                     mstore(0x00, 0x4b6e7f18) // `NotOwnerNorApproved()`.
                     revert(0x1c, 0x04)
                 }
-            }
-            // Revert if `to` is the zero address.
-            if iszero(to) {
-                mstore(0x00, 0xea553b34) // `TransferToZeroAddress()`.
-                revert(0x1c, 0x04)
             }
             // Subtract and store the updated balance of `from`.
             {
@@ -252,7 +256,7 @@ abstract contract ERC1155 {
                 // Revert if the call reverts.
                 if iszero(call(gas(), to, 0, add(m, 0x1c), add(0xc4, data.length), m, 0x20)) {
                     if returndatasize() {
-                        // Bubble up the revert if the delegatecall reverts.
+                        // Bubble up the revert if the call reverts.
                         returndatacopy(0x00, 0x00, returndatasize())
                         revert(0x00, returndatasize())
                     }
@@ -396,7 +400,7 @@ abstract contract ERC1155 {
                 // Revert if the call reverts.
                 if iszero(call(gas(), to, 0, add(m, 0x1c), n, m, 0x20)) {
                     if returndatasize() {
-                        // Bubble up the revert if the delegatecall reverts.
+                        // Bubble up the revert if the call reverts.
                         returndatacopy(0x00, 0x00, returndatasize())
                         revert(0x00, returndatasize())
                     }
@@ -681,7 +685,7 @@ abstract contract ERC1155 {
                 for { let i := 0 } iszero(eq(i, end)) {} {
                     i := add(i, 0x20)
                     let amount := mload(add(amounts, i))
-                    // Increase and store the updated balance of `to`.
+                    // Decrease and store the updated balance of `to`.
                     {
                         mstore(0x00, mload(add(ids, i)))
                         let fromBalanceSlot := keccak256(0x00, 0x40)
@@ -737,8 +741,8 @@ abstract contract ERC1155 {
             sstore(keccak256(0x0c, 0x34), isApproved)
             // Emit the {ApprovalForAll} event.
             mstore(0x00, isApproved)
-            // forgefmt: disable-next-line
-            log3(0x00, 0x20, _APPROVAL_FOR_ALL_EVENT_SIGNATURE, caller(), shr(96, shl(96, operator)))
+            let m := shr(96, not(0))
+            log3(0x00, 0x20, _APPROVAL_FOR_ALL_EVENT_SIGNATURE, and(m, by), and(m, operator))
         }
     }
 
@@ -780,6 +784,11 @@ abstract contract ERC1155 {
         assembly {
             let from_ := shl(96, from)
             let to_ := shl(96, to)
+            // Revert if `to` is the zero address.
+            if iszero(to_) {
+                mstore(0x00, 0xea553b34) // `TransferToZeroAddress()`.
+                revert(0x1c, 0x04)
+            }
             mstore(0x20, or(_ERC1155_MASTER_SLOT_SEED, from_))
             // If `by` is not the zero address, and not equal to `from`,
             // check if it is approved to manage all the tokens of `from`.
@@ -790,11 +799,6 @@ abstract contract ERC1155 {
                     mstore(0x00, 0x4b6e7f18) // `NotOwnerNorApproved()`.
                     revert(0x1c, 0x04)
                 }
-            }
-            // Revert if `to` is the zero address.
-            if iszero(to_) {
-                mstore(0x00, 0xea553b34) // `TransferToZeroAddress()`.
-                revert(0x1c, 0x04)
             }
             // Subtract and store the updated balance of `from`.
             {
@@ -824,10 +828,10 @@ abstract contract ERC1155 {
             // forgefmt: disable-next-line
             log4(0x00, 0x40, _TRANSFER_SINGLE_EVENT_SIGNATURE, caller(), shr(96, from_), shr(96, to_))
         }
-        if (_hasCode(to)) _checkOnERC1155Received(from, to, id, amount, data);
         if (_useAfterTokenTransfer()) {
             _afterTokenTransfer(from, to, _single(id), _single(amount), data);
         }
+        if (_hasCode(to)) _checkOnERC1155Received(from, to, id, amount, data);
     }
 
     /// @dev Equivalent to `_safeBatchTransfer(address(0), from, to, ids, amounts, data)`.
@@ -872,14 +876,14 @@ abstract contract ERC1155 {
             }
             let from_ := shl(96, from)
             let to_ := shl(96, to)
-            let fromSlotSeed := or(_ERC1155_MASTER_SLOT_SEED, from_)
-            let toSlotSeed := or(_ERC1155_MASTER_SLOT_SEED, to_)
-            mstore(0x20, fromSlotSeed)
             // Revert if `to` is the zero address.
             if iszero(to_) {
                 mstore(0x00, 0xea553b34) // `TransferToZeroAddress()`.
                 revert(0x1c, 0x04)
             }
+            let fromSlotSeed := or(_ERC1155_MASTER_SLOT_SEED, from_)
+            let toSlotSeed := or(_ERC1155_MASTER_SLOT_SEED, to_)
+            mstore(0x20, fromSlotSeed)
             // If `by` is not the zero address, and not equal to `from`,
             // check if it is approved to manage all the tokens of `from`.
             let by_ := shl(96, by)
@@ -940,10 +944,10 @@ abstract contract ERC1155 {
                 log4(m, n, _TRANSFER_BATCH_EVENT_SIGNATURE, caller(), shr(96, from_), shr(96, to_))
             }
         }
-        if (_hasCode(to)) _checkOnERC1155BatchReceived(from, to, ids, amounts, data);
         if (_useAfterTokenTransfer()) {
             _afterTokenTransfer(from, to, ids, amounts, data);
         }
+        if (_hasCode(to)) _checkOnERC1155BatchReceived(from, to, ids, amounts, data);
     }
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
@@ -1040,7 +1044,7 @@ abstract contract ERC1155 {
             // Revert if the call reverts.
             if iszero(call(gas(), to, 0, add(m, 0x1c), add(0xc4, n), m, 0x20)) {
                 if returndatasize() {
-                    // Bubble up the revert if the delegatecall reverts.
+                    // Bubble up the revert if the call reverts.
                     returndatacopy(0x00, 0x00, returndatasize())
                     revert(0x00, returndatasize())
                 }
@@ -1091,7 +1095,7 @@ abstract contract ERC1155 {
             // Revert if the call reverts.
             if iszero(call(gas(), to, 0, add(m, 0x1c), n, m, 0x20)) {
                 if returndatasize() {
-                    // Bubble up the revert if the delegatecall reverts.
+                    // Bubble up the revert if the call reverts.
                     returndatacopy(0x00, 0x00, returndatasize())
                     revert(0x00, returndatasize())
                 }
