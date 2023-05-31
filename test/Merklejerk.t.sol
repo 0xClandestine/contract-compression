@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "solady/utils/LibZip.sol";
+import "forge-std/Test.sol";
+
+import {LibZip} from "solady/utils/LibZip.sol";
 
 contract FastLZ {
-    /// @dev Returns the compressed `data`.
     function compress(bytes memory data) external pure returns (bytes memory) {
         return LibZip.flzCompress(data);
     }
 
-    /// @dev Returns the decompressed `data`.
     function decompress(bytes memory data) external pure returns (bytes memory) {
         return LibZip.flzDecompress(data);
     }
@@ -45,5 +45,31 @@ contract FastLZ {
         if (success) revert();
 
         return returnData;
+    }
+}
+
+contract Foo {
+    function add(uint256 a, uint256 b) external pure returns (uint256) {
+        return a + b;
+    }
+}
+
+contract ContractCompressionTest is Test {
+    FastLZ public immutable flz;
+
+    constructor() {
+        flz = new FastLZ();
+    }
+
+    function testRoundtrip() public {
+        bytes memory compressedCreationCode = flz.compress(type(Foo).creationCode);
+
+        assertEq(
+            abi.decode(
+                flz.decompressAndCall(compressedCreationCode, abi.encodeCall(Foo.add, (400, 20))),
+                (uint256)
+            ),
+            420
+        );
     }
 }
